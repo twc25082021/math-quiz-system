@@ -51,13 +51,23 @@ async function loadInitialData(topicName) {
 function updateDiffNav() {
     const nav = document.getElementById('diff-nav');
     if (!nav) return;
+    
+    // 抓取所有不重複的難度並排序
     const diffs = [...new Set(quizData.map(q => parseInt(q.difficulty)).filter(d => !isNaN(d) && d > 0))].sort((a, b) => a - b);
+    
     if (diffs.length === 0) { nav.style.display = 'none'; return; }
     nav.style.display = 'flex';
+    
     let html = `<button class="diff-btn ${currentDifficulty === 'All' ? 'active' : ''}" onclick="filterDifficulty('All')">全部難度</button>`;
+    
     diffs.forEach(d => {
-        html += `<button class="diff-btn ${currentDifficulty == d ? 'active' : ''}" onclick="filterDifficulty(${d})">${d} ⭐</button>`;
+        // 【核心修改】：根據難度數字 d，重複產生對應數量的星星
+        let stars = "⭐".repeat(d);
+        
+        // 將原本顯示的 "${d} ⭐" 改為變數 ${stars}
+        html += `<button class="diff-btn ${currentDifficulty == d ? 'active' : ''}" onclick="filterDifficulty(${d})">${stars}</button>`;
     });
+    
     nav.innerHTML = html;
 }
 
