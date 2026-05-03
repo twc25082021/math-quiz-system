@@ -8,11 +8,21 @@ let isAdmin = false;
 let currentDifficulty = "All";
 
 window.onload = async () => {
-    const activeTopicBtn = document.querySelector('.topic-btn.active');
-    const topic = activeTopicBtn ? activeTopicBtn.dataset.val : "Algebra Ratio";
+    // 先嘗試找已經被標記為 active 的按鈕
+    let activeTopicBtn = document.querySelector('.topic-btn.active');
+
+    // 如果找不到，就強制抓第一個按鈕，並幫它加上 active
+    if (!activeTopicBtn) {
+        activeTopicBtn = document.querySelector('.topic-btn');
+        if (activeTopicBtn) {
+            activeTopicBtn.classList.add('active');
+        }
+    }
+
+    // 防呆：如果連按鈕都沒有，才 fallback 到 Change of Subject
+    const topic = activeTopicBtn ? activeTopicBtn.dataset.val : "Change of Subject";
     await loadInitialData(topic);
 };
-
 async function loadInitialData(topicName) {
     try {
         const resp = await fetch(`${SCRIPT_URL}?action=getQuestions&topic=${encodeURIComponent(topicName)}`);
