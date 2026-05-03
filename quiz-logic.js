@@ -120,16 +120,25 @@ function render() {
     document.getElementById('explain-btn').innerText = isAdmin ? "📖 查看詳解" : "📖 答題後解鎖";
     const q = filteredData[currentIdx];
     document.getElementById('q-meta').innerText = q.id;
-    document.getElementById('q-text').innerText = q.text;
+    
+    // 【關鍵修復 1】：保護題目內容的 < 和 > 不被吃掉
+    let safeQuestionText = String(q.text).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    document.getElementById('q-text').innerHTML = safeQuestionText;
+    
     document.getElementById('progress-tag').innerText = `${currentIdx + 1} / ${filteredData.length}`;
     const diffNum = parseInt(q.difficulty);
     const stars = (!isNaN(diffNum) && diffNum > 0) ? "⭐".repeat(diffNum) : "";
     document.getElementById('q-diff-display').innerText = stars;
+    
     const container = document.getElementById('options-container');
     container.innerHTML = "";
+    
     q.options.forEach((opt, i) => {
         const div = document.createElement('div');
-        let displayOpt = opt;
+        
+        // 【關鍵修復 2】：保護選項裡的 < 和 > 不被當成 HTML 標籤
+        let displayOpt = String(opt).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        
         const hasFraction = displayOpt.includes('\\frac');
         if (hasFraction) {
             div.className = 'option has-fraction';
@@ -141,6 +150,10 @@ function render() {
         div.onclick = () => checkAnswer(i, div);
         container.appendChild(div);
     });
+    
+    updateYearNav();
+    if (window.MathJax) MathJax.typesetPromise();
+}
     updateYearNav();
     if (window.MathJax) MathJax.typesetPromise();
 }
