@@ -150,7 +150,6 @@ function render() {
         div.onclick = () => checkAnswer(i, div);
         container.appendChild(div);
     });
-    
     updateYearNav();
     if (window.MathJax) MathJax.typesetPromise();
 }
