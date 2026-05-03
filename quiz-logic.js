@@ -23,6 +23,7 @@ window.onload = async () => {
     const topic = activeTopicBtn ? activeTopicBtn.dataset.val : "Change of Subject";
     await loadInitialData(topic);
 };
+
 async function loadInitialData(topicName) {
     try {
         const resp = await fetch(`${SCRIPT_URL}?action=getQuestions&topic=${encodeURIComponent(topicName)}`);
@@ -150,9 +151,7 @@ function render() {
         div.onclick = () => checkAnswer(i, div);
         container.appendChild(div);
     });
-    updateYearNav();
-    if (window.MathJax) MathJax.typesetPromise();
-}
+    
     updateYearNav();
     if (window.MathJax) MathJax.typesetPromise();
 }
@@ -185,6 +184,10 @@ function openModal(type) {
     const q = filteredData[currentIdx];
     document.getElementById('modal-title').innerText = type === 'hint' ? "💡 提示 (Hint)" : "📖 答案詳解 (Explanation)";
     let content = type === 'hint' ? `<span style="display:inline-block; background:#DBEAFE; color:#1E40AF; padding:4px 10px; border-radius:6px; font-weight:bold; margin-bottom:10px">${q.hint}</span>` : q.explain;
+    
+    // 【順手修復】：提示和詳解也保護一下 < 和 >
+    content = String(content).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    
     document.getElementById('modal-body').innerHTML = content;
     document.getElementById('modal').classList.add('active');
     if (window.MathJax) MathJax.typesetPromise([document.getElementById('modal-body')]);
