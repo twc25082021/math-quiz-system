@@ -8,10 +8,8 @@ let isAdmin = false;
 let currentDifficulty = "All";
 
 window.onload = async () => {
-    // 先嘗試找已經被標記為 active 的按鈕
     let activeTopicBtn = document.querySelector('.topic-btn.active');
 
-    // 如果找不到，就強制抓第一個按鈕，並幫它加上 active
     if (!activeTopicBtn) {
         activeTopicBtn = document.querySelector('.topic-btn');
         if (activeTopicBtn) {
@@ -19,7 +17,6 @@ window.onload = async () => {
         }
     }
 
-    // 防呆：如果連按鈕都沒有，才 fallback 到 Change of Subject
     const topic = activeTopicBtn ? activeTopicBtn.dataset.val : "Change of Subject";
     await loadInitialData(topic);
 };
@@ -52,7 +49,6 @@ function updateDiffNav() {
     const nav = document.getElementById('diff-nav');
     if (!nav) return;
     
-    // 抓取所有不重複的難度並排序
     const diffs = [...new Set(quizData.map(q => parseInt(q.difficulty)).filter(d => !isNaN(d) && d > 0))].sort((a, b) => a - b);
     
     if (diffs.length === 0) { nav.style.display = 'none'; return; }
@@ -61,10 +57,7 @@ function updateDiffNav() {
     let html = `<button class="diff-btn ${currentDifficulty === 'All' ? 'active' : ''}" onclick="filterDifficulty('All')">全部難度</button>`;
     
     diffs.forEach(d => {
-        // 【核心修改】：根據難度數字 d，重複產生對應數量的星星
         let stars = "⭐".repeat(d);
-        
-        // 將原本顯示的 "${d} ⭐" 改為變數 ${stars}
         html += `<button class="diff-btn ${currentDifficulty == d ? 'active' : ''}" onclick="filterDifficulty(${d})">${stars}</button>`;
     });
     
@@ -132,7 +125,6 @@ function render() {
     const q = filteredData[currentIdx];
     document.getElementById('q-meta').innerText = q.id;
     
-    // 【關鍵修復 1】：保護題目內容的 < 和 > 不被吃掉
     let safeQuestionText = String(q.text).replace(/</g, '&lt;').replace(/>/g, '&gt;');
     document.getElementById('q-text').innerHTML = safeQuestionText;
     
@@ -147,7 +139,6 @@ function render() {
     q.options.forEach((opt, i) => {
         const div = document.createElement('div');
         
-        // 【關鍵修復 2】：保護選項裡的 < 和 > 不被當成 HTML 標籤
         let displayOpt = String(opt).replace(/</g, '&lt;').replace(/>/g, '&gt;');
         
         const hasFraction = displayOpt.includes('\\frac');
@@ -193,12 +184,17 @@ function openModal(type) {
     if (filteredData.length === 0) return;
     const q = filteredData[currentIdx];
     document.getElementById('modal-title').innerText = type === 'hint' ? "💡 提示 (Hint)" : "📖 答案詳解 (Explanation)";
-    let content = type === 'hint' ? `<span style="display:inline-block; background:#DBEAFE; color:#1E40AF; padding:4px 10px; border-radius:6px; font-weight:bold; margin-bottom:10px">${q.hint}</span>` : q.explain;
     
-    // 【順手修復】：提示和詳解也保護一下 < 和 >
-    content = String(content).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    // 【架構優化】：先擷取文字並進行 < > 安全跳脫
+    let rawText = type === 'hint' ? (q.hint || "") : (q.explain || "");
+    let safeContent = String(rawText).replace(/</g, '&lt;').replace(/>/g, '&gt;');
     
-    document.getElementById('modal-body').innerHTML = content;
+    // 【架構優化】：依照類型決定是否穿上 CSS class 外衣，避免 HTML 標籤被跳脫
+    let finalHTML = type === 'hint' 
+        ? `<div class="quiz-hint">${safeContent}</div>` 
+        : safeContent;
+    
+    document.getElementById('modal-body').innerHTML = finalHTML;
     document.getElementById('modal').classList.add('active');
     if (window.MathJax) MathJax.typesetPromise([document.getElementById('modal-body')]);
 }
