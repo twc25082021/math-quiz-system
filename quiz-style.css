@@ -45,3 +45,17 @@ body, html { margin: 0; padding: 0; width: 100%; height: 100dvh; background: var
 .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 6000; padding: 20px; }
 .modal.active { display: flex; }
 .modal-card { background: white; width: 100%; max-width: 450px; padding: 25px; border-radius: 20px; white-space: pre-line; }
+
+/* 動態提示語樣式 (方案B專屬) */
+.quiz-hint {
+    display: inline-block;
+    background-color: #DBEAFE; 
+    color: #1E40AF;            
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-weight: bold;
+    margin-bottom: 10px;
+    font-size: 0.95em;
+    border: 1px solid #BFDBFE;
+    line-height: 1.5;
+}
