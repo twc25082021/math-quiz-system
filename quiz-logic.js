@@ -1,11 +1,19 @@
-/* quiz-logic.js */
+/* quiz-logic.js (升級版：支援班別座號與新版 JSON 驗證) */
+
 let quizData = [];         
 let filteredData = [];     
-let studentName = "";
 let currentIdx = 0;
 let hasAnswered = false;
 let isAdmin = false;
 let currentDifficulty = "All";
+
+// 新增：用來儲存學生的完整資訊
+let currentUser = {
+    id: "",
+    name: "",
+    className: "",
+    classNo: ""
+};
 
 window.onload = async () => {
     let activeTopicBtn = document.querySelector('.topic-btn.active');
@@ -31,7 +39,9 @@ async function loadInitialData(topicName) {
             updateDiffNav(); 
             applyFilter();   
             document.getElementById('loading-screen').style.display = 'none';
-            if (!studentName) {
+            
+            // 如果還沒登入，顯示登入框
+            if (!currentUser.name) {
                 document.getElementById('auth-overlay').classList.add('active');
             } else {
                 currentIdx = 0;
@@ -86,24 +96,54 @@ async function fetchTopicData(btn) {
     await loadInitialData(btn.dataset.val);
 }
 
+// 【核心修改】：升級身分驗證，處理回傳的 JSON 格式
 async function handleAuth() {
     const input = document.getElementById('input-name').value.trim();
     const btn = document.getElementById('auth-btn');
     const err = document.getElementById('auth-error');
     if (!input) return;
-    if (input === ADMIN_KEY) { isAdmin = true; studentName = "Administrator"; loginSuccess(); return; }
+    
+    if (input === ADMIN_KEY) { 
+        isAdmin = true; 
+        currentUser = { name: "Administrator", className: "ADMIN", classNo: "00" }; 
+        loginSuccess(); 
+        return; 
+    }
+    
     btn.disabled = true; btn.innerText = "驗證中...";
     try {
         const resp = await fetch(`${SCRIPT_URL}?name=${encodeURIComponent(input)}`);
-        const text = await resp.text();
-        if (text.trim() !== "Unauthorized") { studentName = text.trim(); loginSuccess(); }
-        else { err.innerText = "⚠️ 姓名未授權"; btn.disabled = false; btn.innerText = "進入系統"; }
-    } catch (e) { err.innerText = "⚠️ 連線失敗"; btn.disabled = false; }
+        const result = await resp.json(); // 解析 JSON
+        
+        if (result.status === "success") { 
+            currentUser = {
+                id: result.id,
+                name: result.name,
+                className: result.className,
+                classNo: result.classNo
+            };
+            loginSuccess(); 
+        } else { 
+            err.innerText = "⚠️ 找不到該學號或未授權"; 
+            btn.disabled = false; 
+            btn.innerText = "進入系統"; 
+        }
+    } catch (e) { 
+        err.innerText = "⚠️ 連線失敗"; 
+        btn.disabled = false; 
+        btn.innerText = "進入系統";
+    }
 }
 
 function loginSuccess() {
     document.getElementById('auth-overlay').classList.remove('active');
-    document.getElementById('user-name-tag').innerText = studentName;
+    
+    // UI 顯示名字，若有班別則顯示 "4A (15) 張三"，否則只顯示名字
+    let displayStr = isAdmin ? currentUser.name : `${currentUser.className} (${currentUser.classNo}) ${currentUser.name}`;
+    if(currentUser.className === "未知班別" || !currentUser.className) displayStr = currentUser.name;
+    
+    document.getElementById('user-name-tag').innerText = displayStr;
+    
     const badge = document.getElementById('status-badge');
     if (isAdmin) { badge.innerText = "ADMIN 模式"; badge.classList.add('admin'); }
     else { badge.innerText = "已連線雲端"; }
@@ -157,18 +197,30 @@ function render() {
     if (window.MathJax) MathJax.typesetPromise();
 }
 
+// 【核心修改】：答題時，將班別與座號一併送回 Google Sheet
 function checkAnswer(idx, el) {
     if (hasAnswered && !isAdmin) return;
-    const correct = filteredData[currentIdx].ans;
+    const q = filteredData[currentIdx];
+    const correct = q.ans;
     const isCorrect = (idx === correct);
     document.querySelectorAll('.option').forEach(o => o.classList.remove('correct', 'wrong'));
     el.classList.add(isCorrect ? 'correct' : 'wrong');
+    
     if (!hasAnswered) {
         hasAnswered = true;
         document.getElementById('explain-btn').disabled = false;
         document.getElementById('explain-btn').innerText = "📖 查看詳解";
         if (!isAdmin) {
-            const params = new URLSearchParams({ studentName: studentName, qId: filteredData[currentIdx].id, choice: ['A','B','C','D'][idx], status: isCorrect ? "正確" : "錯誤" });
+            const params = new URLSearchParams({ 
+                studentName: currentUser.name, 
+                className: currentUser.className, // 傳送班別
+                classNo: currentUser.classNo,     // 傳送座號
+                qId: q.id, 
+                choice: ['A','B','C','D'][idx], 
+                status: isCorrect ? "正確" : "錯誤",
+                topic: q.topic,
+                difficulty: q.difficulty
+            });
             fetch(SCRIPT_URL, { method: 'POST', mode: 'no-cors', body: params });
         }
     }
@@ -185,17 +237,20 @@ function openModal(type) {
     const q = filteredData[currentIdx];
     document.getElementById('modal-title').innerText = type === 'hint' ? "💡 提示 (Hint)" : "📖 答案詳解 (Explanation)";
     
-    // 【架構優化】：先擷取文字並進行 < > 安全跳脫
     let rawText = type === 'hint' ? (q.hint || "") : (q.explain || "");
-    let safeContent = String(rawText).replace(/</g, '&lt;').replace(/>/g, '&gt;');
     
-    // 【架構優化】：依照類型決定是否穿上 CSS class 外衣，避免 HTML 標籤被跳脫
+    // 強制把後台偷偷塞進來的 <span ...> 垃圾標籤刪除 (保留之前的修復)
+    rawText = String(rawText).replace(/<span[^>]*>/gi, '').replace(/<\/span>/gi, '');
+    
+    let safeContent = rawText.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    
     let finalHTML = type === 'hint' 
         ? `<div class="quiz-hint">${safeContent}</div>` 
         : safeContent;
     
     document.getElementById('modal-body').innerHTML = finalHTML;
     document.getElementById('modal').classList.add('active');
+    
     if (window.MathJax) MathJax.typesetPromise([document.getElementById('modal-body')]);
 }
 
