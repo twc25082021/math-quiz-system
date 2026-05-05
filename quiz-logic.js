@@ -1,4 +1,4 @@
-/* quiz-logic.js (升級版：支援班別座號與新版 JSON 驗證) */
+/* quiz-logic.js (加入換行支援與班別學號) */
 
 let quizData = [];         
 let filteredData = [];     
@@ -7,24 +7,16 @@ let hasAnswered = false;
 let isAdmin = false;
 let currentDifficulty = "All";
 
-// 新增：用來儲存學生的完整資訊
 let currentUser = {
-    id: "",
-    name: "",
-    className: "",
-    classNo: ""
+    id: "", name: "", className: "", classNo: ""
 };
 
 window.onload = async () => {
     let activeTopicBtn = document.querySelector('.topic-btn.active');
-
     if (!activeTopicBtn) {
         activeTopicBtn = document.querySelector('.topic-btn');
-        if (activeTopicBtn) {
-            activeTopicBtn.classList.add('active');
-        }
+        if (activeTopicBtn) activeTopicBtn.classList.add('active');
     }
-
     const topic = activeTopicBtn ? activeTopicBtn.dataset.val : "Change of Subject";
     await loadInitialData(topic);
 };
@@ -40,7 +32,6 @@ async function loadInitialData(topicName) {
             applyFilter();   
             document.getElementById('loading-screen').style.display = 'none';
             
-            // 如果還沒登入，顯示登入框
             if (!currentUser.name) {
                 document.getElementById('auth-overlay').classList.add('active');
             } else {
@@ -58,19 +49,14 @@ async function loadInitialData(topicName) {
 function updateDiffNav() {
     const nav = document.getElementById('diff-nav');
     if (!nav) return;
-    
     const diffs = [...new Set(quizData.map(q => parseInt(q.difficulty)).filter(d => !isNaN(d) && d > 0))].sort((a, b) => a - b);
-    
     if (diffs.length === 0) { nav.style.display = 'none'; return; }
     nav.style.display = 'flex';
-    
     let html = `<button class="diff-btn ${currentDifficulty === 'All' ? 'active' : ''}" onclick="filterDifficulty('All')">全部難度</button>`;
-    
     diffs.forEach(d => {
         let stars = "⭐".repeat(d);
         html += `<button class="diff-btn ${currentDifficulty == d ? 'active' : ''}" onclick="filterDifficulty(${d})">${stars}</button>`;
     });
-    
     nav.innerHTML = html;
 }
 
@@ -96,7 +82,6 @@ async function fetchTopicData(btn) {
     await loadInitialData(btn.dataset.val);
 }
 
-// 【核心修改】：升級身分驗證，處理回傳的 JSON 格式
 async function handleAuth() {
     const input = document.getElementById('input-name').value.trim();
     const btn = document.getElementById('auth-btn');
@@ -113,37 +98,25 @@ async function handleAuth() {
     btn.disabled = true; btn.innerText = "驗證中...";
     try {
         const resp = await fetch(`${SCRIPT_URL}?name=${encodeURIComponent(input)}`);
-        const result = await resp.json(); // 解析 JSON
-        
+        const result = await resp.json();
         if (result.status === "success") { 
-            currentUser = {
-                id: result.id,
-                name: result.name,
-                className: result.className,
-                classNo: result.classNo
-            };
+            currentUser = { id: result.id, name: result.name, className: result.className, classNo: result.classNo };
             loginSuccess(); 
         } else { 
             err.innerText = "⚠️ 找不到該學號或未授權"; 
-            btn.disabled = false; 
-            btn.innerText = "進入系統"; 
+            btn.disabled = false; btn.innerText = "進入系統"; 
         }
     } catch (e) { 
         err.innerText = "⚠️ 連線失敗"; 
-        btn.disabled = false; 
-        btn.innerText = "進入系統";
+        btn.disabled = false; btn.innerText = "進入系統";
     }
 }
 
 function loginSuccess() {
     document.getElementById('auth-overlay').classList.remove('active');
-    
-    // UI 顯示名字，若有班別則顯示 "4A (15) 張三"，否則只顯示名字
     let displayStr = isAdmin ? currentUser.name : `${currentUser.className} (${currentUser.classNo}) ${currentUser.name}`;
     if(currentUser.className === "未知班別" || !currentUser.className) displayStr = currentUser.name;
-    
     document.getElementById('user-name-tag').innerText = displayStr;
-    
     const badge = document.getElementById('status-badge');
     if (isAdmin) { badge.innerText = "ADMIN 模式"; badge.classList.add('admin'); }
     else { badge.innerText = "已連線雲端"; }
@@ -154,9 +127,6 @@ function render() {
     if (filteredData.length === 0) {
         document.getElementById('q-text').innerText = "此難度下暫無題目。";
         document.getElementById('options-container').innerHTML = "";
-        document.getElementById('progress-tag').innerText = "0 / 0";
-        document.getElementById('year-nav').innerHTML = "";
-        document.getElementById('q-diff-display').innerText = "";
         return;
     }
     hasAnswered = false;
@@ -165,24 +135,23 @@ function render() {
     const q = filteredData[currentIdx];
     document.getElementById('q-meta').innerText = q.id;
     
-    let safeQuestionText = String(q.text).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    // 【加入換行支援】
+    let safeQuestionText = String(q.text).replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
     document.getElementById('q-text').innerHTML = safeQuestionText;
     
     document.getElementById('progress-tag').innerText = `${currentIdx + 1} / ${filteredData.length}`;
     const diffNum = parseInt(q.difficulty);
-    const stars = (!isNaN(diffNum) && diffNum > 0) ? "⭐".repeat(diffNum) : "";
-    document.getElementById('q-diff-display').innerText = stars;
+    document.getElementById('q-diff-display').innerText = (!isNaN(diffNum) && diffNum > 0) ? "⭐".repeat(diffNum) : "";
     
     const container = document.getElementById('options-container');
     container.innerHTML = "";
     
     q.options.forEach((opt, i) => {
         const div = document.createElement('div');
+        // 【加入換行支援】
+        let displayOpt = String(opt).replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
         
-        let displayOpt = String(opt).replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        
-        const hasFraction = displayOpt.includes('\\frac');
-        if (hasFraction) {
+        if (displayOpt.includes('\\frac')) {
             div.className = 'option has-fraction';
             displayOpt = displayOpt.replace(/\\frac/g, '\\displaystyle \\frac');
         } else {
@@ -197,12 +166,10 @@ function render() {
     if (window.MathJax) MathJax.typesetPromise();
 }
 
-// 【核心修改】：答題時，將班別與座號一併送回 Google Sheet
 function checkAnswer(idx, el) {
     if (hasAnswered && !isAdmin) return;
     const q = filteredData[currentIdx];
-    const correct = q.ans;
-    const isCorrect = (idx === correct);
+    const isCorrect = (idx === q.ans);
     document.querySelectorAll('.option').forEach(o => o.classList.remove('correct', 'wrong'));
     el.classList.add(isCorrect ? 'correct' : 'wrong');
     
@@ -212,9 +179,10 @@ function checkAnswer(idx, el) {
         document.getElementById('explain-btn').innerText = "📖 查看詳解";
         if (!isAdmin) {
             const params = new URLSearchParams({ 
+                action: "submitPractice", // 標記為練習
                 studentName: currentUser.name, 
-                className: currentUser.className, // 傳送班別
-                classNo: currentUser.classNo,     // 傳送座號
+                className: currentUser.className, 
+                classNo: currentUser.classNo,     
                 qId: q.id, 
                 choice: ['A','B','C','D'][idx], 
                 status: isCorrect ? "正確" : "錯誤",
@@ -238,19 +206,14 @@ function openModal(type) {
     document.getElementById('modal-title').innerText = type === 'hint' ? "💡 提示 (Hint)" : "📖 答案詳解 (Explanation)";
     
     let rawText = type === 'hint' ? (q.hint || "") : (q.explain || "");
-    
-    // 強制把後台偷偷塞進來的 <span ...> 垃圾標籤刪除 (保留之前的修復)
     rawText = String(rawText).replace(/<span[^>]*>/gi, '').replace(/<\/span>/gi, '');
     
-    let safeContent = rawText.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    // 【加入換行支援】
+    let safeContent = rawText.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
     
-    let finalHTML = type === 'hint' 
-        ? `<div class="quiz-hint">${safeContent}</div>` 
-        : safeContent;
-    
+    let finalHTML = type === 'hint' ? `<div class="quiz-hint">${safeContent}</div>` : safeContent;
     document.getElementById('modal-body').innerHTML = finalHTML;
     document.getElementById('modal').classList.add('active');
-    
     if (window.MathJax) MathJax.typesetPromise([document.getElementById('modal-body')]);
 }
 
