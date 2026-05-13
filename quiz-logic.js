@@ -206,33 +206,26 @@ function nextQuestion() {
 function openModal(type) {
     if (filteredData.length === 0) return;
     const q = filteredData[currentIdx];
+    
+    // 保持你原本的標題邏輯
     document.getElementById('modal-title').innerText = type === 'hint' ? "💡 提示 (Hint)" : "📖 答案詳解 (Explanation)";
     
     let rawText = type === 'hint' ? (q.hint || "") : (q.explain || "");
     
-    // 安全過濾 HTML 標籤，防止跑版
-    let safeContent = String(rawText).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    // 移除可能存在的 span 標籤
+    rawText = String(rawText).replace(/<span[^>]*>/gi, '').replace(/<\/span>/gi, '');
     
-    // 核心修改：加入 white-space: pre-wrap; 讓排版完全跟隨 Google Sheet
-    let finalHTML = `<div style="white-space: pre-wrap; word-wrap: break-word; line-height: 1.6; font-size: 1.05rem;">${safeContent}</div>`;
+    // 安全過濾 < > 符號
+    let safeContent = rawText.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    
+    // 【核心修正】保持你原本的 quiz-hint Class，但加上 white-space: pre-wrap 支援隔行
+    let finalHTML = type === 'hint' 
+        ? `<div class="quiz-hint" style="white-space: pre-wrap; text-align: left; line-height: 1.6;">${safeContent}</div>` 
+        : `<div style="white-space: pre-wrap; text-align: left; line-height: 1.6;">${safeContent}</div>`;
     
     document.getElementById('modal-body').innerHTML = finalHTML;
     document.getElementById('modal').classList.add('active');
     
+    // 確保數學公式依然能跑
     if (window.MathJax) MathJax.typesetPromise([document.getElementById('modal-body')]);
-}
-function closeModal() { document.getElementById('modal').classList.remove('active'); }
-
-function updateYearNav() {
-    const nav = document.getElementById('year-nav');
-    nav.innerHTML = "";
-    filteredData.forEach((q, i) => {
-        const b = document.createElement('button');
-        b.className = `year-btn ${i === currentIdx ? 'active' : ''}`;
-        b.innerText = q.year;
-        b.onclick = () => { currentIdx = i; render(); };
-        nav.appendChild(b);
-    });
-    const activeBtn = document.querySelector('.year-btn.active');
-    if (activeBtn) activeBtn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
 }
