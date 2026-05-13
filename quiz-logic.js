@@ -209,17 +209,18 @@ function openModal(type) {
     document.getElementById('modal-title').innerText = type === 'hint' ? "💡 提示 (Hint)" : "📖 答案詳解 (Explanation)";
     
     let rawText = type === 'hint' ? (q.hint || "") : (q.explain || "");
-    rawText = String(rawText).replace(/<span[^>]*>/gi, '').replace(/<\/span>/gi, '');
     
-    // 【加入換行支援】
-    let safeContent = rawText.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+    // 安全過濾 HTML 標籤，防止跑版
+    let safeContent = String(rawText).replace(/</g, '&lt;').replace(/>/g, '&gt;');
     
-    let finalHTML = type === 'hint' ? `<div class="quiz-hint">${safeContent}</div>` : safeContent;
+    // 核心修改：加入 white-space: pre-wrap; 讓排版完全跟隨 Google Sheet
+    let finalHTML = `<div style="white-space: pre-wrap; word-wrap: break-word; line-height: 1.6; font-size: 1.05rem;">${safeContent}</div>`;
+    
     document.getElementById('modal-body').innerHTML = finalHTML;
     document.getElementById('modal').classList.add('active');
+    
     if (window.MathJax) MathJax.typesetPromise([document.getElementById('modal-body')]);
 }
-
 function closeModal() { document.getElementById('modal').classList.remove('active'); }
 
 function updateYearNav() {
