@@ -1,4 +1,4 @@
-/* test-logic.js (更新：管理員直入檢閱模式、明碼輸入、允許跳題) */
+/* test-logic.js (更新：補回 Apps Script 完整數據傳輸、修復 DOM 重置結構) */
 
 let studentInfo = {}, testData = [], originalTestData = [], testName = "", currentIdx = 0, isAdmin = false;
 let testPasscode = "1234", timerInterval = null, timeLeft = 0, isReviewMode = false;
@@ -193,14 +193,28 @@ function nextQuestion() {
 
 function submitTest(isAuto = false) {
     clearInterval(timerInterval);
+    
+    // 【修復 1】計算原始分數與收集每題明細，對齊原本後台的接收格式
     let details = [], correct = 0;
-    testData.forEach(q => { if (q.userAns === q.ans) correct++; });
+    const sorted = [...testData].sort((a, b) => a.originalIndex - b.originalIndex);
+    sorted.forEach(q => {
+        const ok = (q.userAns === q.ans);
+        if (ok) correct++;
+        details.push(`${q.id} (${ok ? "✓" : "✗"})`);
+    });
+    
     testScore = `${correct} / ${testData.length}`;
 
     if (!isAdmin) {
         const params = new URLSearchParams({
-            action: "submitTest", name: studentInfo.name, className: studentInfo.className,
-            classNo: studentInfo.classNo, testName: testName, score: testScore
+            action: "submitTest", 
+            name: studentInfo.name, 
+            className: studentInfo.className,
+            classNo: studentInfo.classNo, 
+            testName: testName, 
+            score: testScore,
+            rawScore: correct,                   // 新增：純數字得分
+            details: JSON.stringify(details)     // 新增：JSON 明細
         });
         fetch(SCRIPT_URL, { method: 'POST', mode: 'no-cors', body: params });
     }
@@ -225,12 +239,25 @@ function showPasscodeOverlay() {
 function verifyPasscode() {
     const code = document.getElementById('input-passcode').value.trim();
     if (code === testPasscode || code === ADMIN_KEY) { 
-        isReviewMode = true; testData = originalTestData; currentIdx = 0;
-        document.getElementById('main-display').innerHTML = `<div class="card"><div id="q-meta"></div><div id="q-text"></div><div id="options-container"></div></div>`;
+        isReviewMode = true; 
+        testData = originalTestData; 
+        currentIdx = 0;
+        
+        // 【修復 2】補回 warning-msg 以防萬一，保持 DOM 結構統一
+        document.getElementById('main-display').innerHTML = `
+            <div class="card">
+                <div id="q-meta"></div>
+                <div id="q-text"></div>
+                <div id="options-container"></div>
+                <div id="warning-msg" style="color:var(--wrong); font-weight:bold; text-align:center; margin-top:10px; min-height:20px; font-size:0.9rem;"></div>
+            </div>`;
+            
         document.getElementById('test-footer').classList.remove('hidden');
         document.getElementById('top-nav').classList.remove('hidden'); 
         renderQuestion();
-    } else { document.getElementById('passcode-error').innerText = "❌ 解鎖碼錯誤"; }
+    } else { 
+        document.getElementById('passcode-error').innerText = "❌ 解鎖碼錯誤"; 
+    }
 }
 
 function openModal(type) {
@@ -238,27 +265,21 @@ function openModal(type) {
     const modal = document.createElement('div');
     modal.style = "position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:9000; display:flex; align-items:center; justify-content:center; padding:20px;";
     
-    // 1. 取得原始文字
     let rawText = type === 'hint' ? (q.hint || "無提示") : (q.explain || "無詳解");
     
-    // 2. 清除可能殘留的 HTML，並將字串的 \n 轉為真實換行符號
     let safeContent = String(rawText).replace(/</g, '&lt;').replace(/>/g, '&gt;');
     safeContent = safeContent.replace(/\\n/g, '\n'); 
     
-    // 3. 【核心修復：聰明換行器，絕對保護 MathJax 的 $ 符號】
     let parts = safeContent.split('$');
     for (let i = 0; i < parts.length; i++) {
         if (i % 2 === 1) { 
-            // 這是 $ ... $ 裡面的數學公式
             parts[i] = parts[i].replace(/\n/g, '$<br>$');
         } else {
-            // 這是普通的文字，直接換行
             parts[i] = parts[i].replace(/\n/g, '<br>');
         }
     }
     safeContent = parts.join('$');
 
-    // 4. 渲染畫面 (注意：移除了無效的 white-space: pre-wrap)
     modal.innerHTML = `
         <div style="background:white; width:100%; max-width:500px; border-radius:20px; padding:25px; max-height:80vh; overflow-y:auto;">
             <h3 style="margin-top:0;">${type==='hint'?'💡 提示':'📖 詳解'}</h3>
