@@ -238,13 +238,31 @@ function openModal(type) {
     const modal = document.createElement('div');
     modal.style = "position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:9000; display:flex; align-items:center; justify-content:center; padding:20px;";
     
-    let rawText = type === 'hint' ? (q.hint || "") : (q.explain || "");
+    // 1. 取得原始文字
+    let rawText = type === 'hint' ? (q.hint || "無提示") : (q.explain || "無詳解");
+    
+    // 2. 清除可能殘留的 HTML，並將字串的 \n 轉為真實換行符號
     let safeContent = String(rawText).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    safeContent = safeContent.replace(/\\n/g, '\n'); 
+    
+    // 3. 【核心修復：聰明換行器，絕對保護 MathJax 的 $ 符號】
+    let parts = safeContent.split('$');
+    for (let i = 0; i < parts.length; i++) {
+        if (i % 2 === 1) { 
+            // 這是 $ ... $ 裡面的數學公式
+            parts[i] = parts[i].replace(/\n/g, '$<br>$');
+        } else {
+            // 這是普通的文字，直接換行
+            parts[i] = parts[i].replace(/\n/g, '<br>');
+        }
+    }
+    safeContent = parts.join('$');
 
+    // 4. 渲染畫面 (注意：移除了無效的 white-space: pre-wrap)
     modal.innerHTML = `
         <div style="background:white; width:100%; max-width:500px; border-radius:20px; padding:25px; max-height:80vh; overflow-y:auto;">
             <h3 style="margin-top:0;">${type==='hint'?'💡 提示':'📖 詳解'}</h3>
-            <div style="margin:20px 0; line-height:1.6; white-space: pre-wrap; word-wrap: break-word; font-size: 1.05rem;">${safeContent}</div>
+            <div style="margin:20px 0; line-height:1.6; word-wrap: break-word; font-size: 1.05rem;">${safeContent}</div>
             <button class="btn btn-sub" style="width:100%" onclick="this.parentElement.parentElement.remove()">關閉</button>
         </div>
     `;
