@@ -1,25 +1,33 @@
-/* test-logic.js (更新：解鎖後顯示分數、明碼輸入、允許空選跳題、5分鐘提示) */
+/* test-logic.js (更新：管理員直入檢閱模式、明碼輸入、允許跳題) */
 
 let studentInfo = {}, testData = [], originalTestData = [], testName = "", currentIdx = 0, isAdmin = false;
 let testPasscode = "1234", timerInterval = null, timeLeft = 0, isReviewMode = false;
-let testScore = ""; // 儲存最終分數
+let testScore = ""; 
 
 async function handleAuth() {
     const input = document.getElementById('input-name').value.trim();
     if (!input) return;
+    
+    // 管理員登入邏輯
     if (input === ADMIN_KEY) {
         isAdmin = true;
-        studentInfo = { name: "管理員", className: "ADMIN", classNo: "00" };
-        document.querySelectorAll('.btn-admin').forEach(b => b.classList.remove('hidden'));
+        studentInfo = { name: "老師 (管理員)", className: "STAFF", classNo: "00" };
         showCodeOverlay();
         return;
     }
+
     try {
         const r = await fetch(`${SCRIPT_URL}?name=${encodeURIComponent(input)}`);
         const res = await r.json();
-        if (res.status === "success") { studentInfo = res; showCodeOverlay(); } 
-        else { document.getElementById('auth-error').innerText = "⚠️ 找不到該學生編號"; }
-    } catch (e) { document.getElementById('auth-error').innerText = "連線失敗"; }
+        if (res.status === "success") { 
+            studentInfo = res; 
+            showCodeOverlay(); 
+        } else { 
+            document.getElementById('auth-error').innerText = "⚠️ 找不到該學生編號"; 
+        }
+    } catch (e) { 
+        document.getElementById('auth-error').innerText = "連線失敗"; 
+    }
 }
 
 function showCodeOverlay() {
@@ -43,28 +51,44 @@ async function fetchTest() {
             testPasscode = res.passcode || "1234";
             testName = res.testName;
             
+            // 處理題目數據
             let processed = res.data.map((q, qIndex) => {
                 let opts = q.options.map((text, oIdx) => ({ text: text, originalIdx: oIdx }));
-                for (let i = opts.length - 1; i > 0; i--) {
-                    const j = Math.floor(Math.random() * (i + 1));
-                    [opts[i], opts[j]] = [opts[j], opts[i]];
+                // 學生才打亂選項，管理員對卷不打亂
+                if (!isAdmin) {
+                    for (let i = opts.length - 1; i > 0; i--) {
+                        const j = Math.floor(Math.random() * (i + 1));
+                        [opts[i], opts[j]] = [opts[j], opts[i]];
+                    }
                 }
                 return { ...q, displayOptions: opts, userAns: null, originalIndex: qIndex }; 
             });
 
             originalTestData = [...processed].sort((a, b) => a.originalIndex - b.originalIndex);
+            
+            // 介面初始化
+            document.getElementById('test-name-tag').innerText = testName;
+            document.getElementById('code-overlay').classList.add('hidden');
+            document.getElementById('test-footer').classList.remove('hidden');
+            document.getElementById('top-nav').classList.remove('hidden');
+
+            // --- 核心改動：管理員直跳檢閱模式 ---
+            if (isAdmin) {
+                isReviewMode = true;
+                testData = [...originalTestData]; // 管理員使用原始順序
+                testScore = "管理員模式";
+                renderQuestion();
+                return; 
+            }
+
+            // 學生模式：打亂題目順序並開始計時
             testData = [...processed];
             for (let i = testData.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
                 [testData[i], testData[j]] = [testData[j], testData[i]];
             }
-
-            document.getElementById('test-name-tag').innerText = testName;
-            document.getElementById('code-overlay').classList.add('hidden');
-            document.getElementById('test-footer').classList.remove('hidden');
-            document.getElementById('top-nav').classList.remove('hidden');
             
-            if (res.duration > 0 && !isAdmin) {
+            if (res.duration > 0) {
                 timeLeft = res.duration * 60;
                 document.getElementById('timer-display').classList.remove('hidden');
                 startTimer();
@@ -86,12 +110,7 @@ function startTimer() {
         timeLeft--;
         let m = Math.floor(timeLeft / 60), s = timeLeft % 60;
         document.getElementById('timer-display').innerText = `${m}:${s < 10 ? '0' : ''}${s}`;
-        
-        // 剩餘 5 分鐘提示
-        if (timeLeft === 300) {
-            alert("⏰ 注意：測驗時間剩餘 5 分鐘！");
-        }
-        
+        if (timeLeft === 300) alert("⏰ 注意：測驗時間剩餘 5 分鐘！");
         if (timeLeft <= 0) { clearInterval(timerInterval); submitTest(true); }
     }, 1000);
 }
@@ -103,26 +122,26 @@ function renderTopNav() {
         const btn = document.createElement('div');
         let cls = "q-btn";
         if (i === currentIdx) cls += " current";
-        else if (isReviewMode) cls += (q.userAns === q.ans) ? " res-ok" : " res-no";
+        else if (isReviewMode) {
+            if (isAdmin) cls += " answered"; // 管理員模式下全部顯示為已讀
+            else cls += (q.userAns === q.ans) ? " res-ok" : " res-no";
+        }
         else if (q.userAns !== null) cls += " answered";
         
         btn.className = cls;
         btn.innerText = i + 1;
         btn.onclick = () => { currentIdx = i; renderQuestion(); };
         nav.appendChild(btn);
-        if (i === currentIdx) setTimeout(() => btn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' }), 50);
     });
 }
 
 function renderQuestion() {
     if (!testData[currentIdx]) return;
     const q = testData[currentIdx];
-    document.getElementById('warning-msg').innerText = ""; 
     document.getElementById('progress-tag').innerText = `${currentIdx + 1} / ${testData.length}`;
     
-    // 如果是檢閱模式，顯示最終得分
-    let metaText = isReviewMode ? `<span style="color:var(--accent); font-weight:bold; font-size:1.1rem; margin-right:15px;">得分: ${testScore}</span>題號: ${q.id} (檢閱中)` : "測驗進行中";
-    if (isReviewMode && q.userAns === null) metaText += ` <span style="color:var(--wrong); margin-left:10px;">[ 未作答 ]</span>`;
+    // 頂部資訊
+    let metaText = isReviewMode ? `<span style="color:var(--accent); font-weight:bold; margin-right:15px;">${testScore}</span>題號: ${q.id}` : "測驗進行中";
     document.getElementById('q-meta').innerHTML = metaText;
     
     let displayQ = String(q.text).replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
@@ -137,23 +156,24 @@ function renderQuestion() {
         let status = "";
         if (isReviewMode) {
             if (opt.originalIdx === q.ans) status = "correct"; 
-            else if (q.userAns === opt.originalIdx) status = "wrong"; 
+            else if (!isAdmin && q.userAns === opt.originalIdx) status = "wrong"; 
         } else if (q.userAns === opt.originalIdx) status = "selected";
         
         div.className = `option ${status}`;
         let displayOpt = String(opt.text).replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
-        let hasFraction = false;
-        if (displayOpt.includes('\\frac')) { displayOpt = displayOpt.replace(/\\frac/g, '\\displaystyle \\frac'); hasFraction = true; }
+        if (displayOpt.includes('\\frac')) { 
+            displayOpt = displayOpt.replace(/\\frac/g, '\\displaystyle \\frac');
+            div.classList.add('has-fraction');
+        }
 
-        div.innerHTML = `<span style="color:var(--disabled); margin-right:15px; font-style:italic;">${['A','B','C','D'][i]}.</span> <span style="font-family:'Times New Roman', serif; font-weight:bold; font-style:italic; line-height: 1.5;">${displayOpt}</span>`;
-        if (hasFraction) div.classList.add('has-fraction');
+        div.innerHTML = `<span style="color:var(--disabled); margin-right:15px; font-style:italic;">${['A','B','C','D'][i]}.</span> <span>${displayOpt}</span>`;
 
         if (!isReviewMode) div.onclick = () => { q.userAns = opt.originalIdx; renderQuestion(); };
         container.appendChild(div);
     });
 
     const nextBtn = document.getElementById('next-btn');
-    if (currentIdx === testData.length - 1) nextBtn.innerHTML = isReviewMode ? '結束檢閱' : '📤 提交測驗';
+    if (currentIdx === testData.length - 1) nextBtn.innerHTML = isReviewMode ? '結束對卷' : '📤 提交測驗';
     else nextBtn.innerHTML = '下一題 <i class="fa-solid fa-chevron-right"></i>';
 
     if (isReviewMode) {
@@ -165,55 +185,39 @@ function renderQuestion() {
 }
 
 function prevQuestion() { if (currentIdx > 0) { currentIdx--; renderQuestion(); } }
-
 function nextQuestion() {
     if (isReviewMode && currentIdx === testData.length - 1) { location.reload(); return; }
-    // 移除阻擋未作答的邏輯，允許直接按下一題
     if (currentIdx < testData.length - 1) { currentIdx++; renderQuestion(); } 
     else if (!isReviewMode) submitTest();
 }
 
 function submitTest(isAuto = false) {
     clearInterval(timerInterval);
-    document.getElementById('next-btn').disabled = true;
-    document.getElementById('next-btn').innerText = "上傳中...";
-    
     let details = [], correct = 0;
-    const sorted = [...testData].sort((a, b) => a.originalIndex - b.originalIndex);
-    sorted.forEach(q => {
-        const ok = (q.userAns === q.ans);
-        if (ok) correct++;
-        details.push(`${q.id} (${ok ? "✓" : "✗"})`);
-    });
-
-    testScore = `${correct} / ${testData.length}`; // 儲存分數供檢閱時使用
+    testData.forEach(q => { if (q.userAns === q.ans) correct++; });
+    testScore = `${correct} / ${testData.length}`;
 
     if (!isAdmin) {
         const params = new URLSearchParams({
             action: "submitTest", name: studentInfo.name, className: studentInfo.className,
-            classNo: studentInfo.classNo, testName: testName, score: testScore, rawScore: correct, details: JSON.stringify(details)
+            classNo: studentInfo.classNo, testName: testName, score: testScore
         });
         fetch(SCRIPT_URL, { method: 'POST', mode: 'no-cors', body: params });
     }
-    if (isAuto) alert("⏰ 時間到！系統已自動提交答案。");
-    showPasscodeOverlay(); // 提交後不直接顯示分數，只顯示解鎖畫面
+    if (isAuto) alert("⏰ 時間到！系統已自動提交。");
+    showPasscodeOverlay();
 }
 
-// --- 提交後畫面：不顯示分數，輸入框改為 type="text" (明碼) ---
 function showPasscodeOverlay() {
     document.getElementById('test-footer').classList.add('hidden');
-    document.getElementById('timer-display').classList.add('hidden');
     document.getElementById('top-nav').classList.add('hidden'); 
-    
     document.getElementById('main-display').innerHTML = `
         <div class="card" style="text-align:center;">
             <h2 style="color:var(--correct)">✅ 測驗已提交</h2>
-            <div style="margin: 25px 0; padding: 20px; background: #F8FAFC; border-radius: 16px;">
-                 <p>請輸入老師提供的解鎖碼查看分數與詳細檢閱</p>
-                 <input type="text" id="input-passcode" class="auth-input" placeholder="請輸入解鎖碼" style="border:2px solid #E2E8F0; width: 80%;">
-                 <button class="btn btn-main" style="width:80%; margin:15px auto;" onclick="verifyPasscode()">🔓 解鎖並檢閱</button>
-                 <div id="passcode-error" style="color:var(--wrong); font-weight:bold;"></div>
-            </div>
+            <p>請輸入解鎖碼查看分數與詳解</p>
+            <input type="text" id="input-passcode" class="auth-input" placeholder="解鎖碼" style="width:80%;">
+            <button class="btn btn-main" style="width:80%; margin:15px auto;" onclick="verifyPasscode()">🔓 解鎖並檢閱</button>
+            <div id="passcode-error" style="color:var(--wrong); font-weight:bold;"></div>
         </div>
     `;
 }
@@ -222,15 +226,7 @@ function verifyPasscode() {
     const code = document.getElementById('input-passcode').value.trim();
     if (code === testPasscode || code === ADMIN_KEY) { 
         isReviewMode = true; testData = originalTestData; currentIdx = 0;
-        document.getElementById('next-btn').disabled = false;
-        document.getElementById('main-display').innerHTML = `
-            <div class="card">
-                <div id="q-meta" style="color:var(--disabled); font-size:0.8rem; margin-bottom:10px;">題號: --</div>
-                <div id="q-text" style="font-size:1.1rem; font-weight:bold; margin-bottom:20px;">載入中...</div>
-                <div id="options-container"></div>
-                <div id="warning-msg" style="color:var(--wrong); font-weight:bold; text-align:center; margin-top:10px; min-height:20px; font-size:0.9rem;"></div>
-            </div>
-        `;
+        document.getElementById('main-display').innerHTML = `<div class="card"><div id="q-meta"></div><div id="q-text"></div><div id="options-container"></div></div>`;
         document.getElementById('test-footer').classList.remove('hidden');
         document.getElementById('top-nav').classList.remove('hidden'); 
         renderQuestion();
@@ -243,7 +239,7 @@ function openModal(type) {
     modal.style = "position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:9000; display:flex; align-items:center; justify-content:center; padding:20px;";
     modal.innerHTML = `
         <div style="background:white; width:100%; max-width:500px; border-radius:20px; padding:25px; max-height:80vh; overflow-y:auto;">
-            <h3 style="margin-top:0;">${type==='hint'?'💡 提示':'📖 詳解'}</h3>
+            <h3>${type==='hint'?'💡 提示':'📖 詳解'}</h3>
             <div style="margin:20px 0; line-height:1.6;">${String(type==='hint'?q.hint:q.explain).replace(/\n/g,'<br>')}</div>
             <button class="btn btn-sub" style="width:100%" onclick="this.parentElement.parentElement.remove()">關閉</button>
         </div>
