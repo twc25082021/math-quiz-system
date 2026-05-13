@@ -1,4 +1,4 @@
-/* test-logic.js (全功能更新版) */
+/* test-logic.js (完整更新版：支援大字報、載入中、跳題) */
 
 let studentInfo = {}, testData = [], originalTestData = [], testName = "", currentIdx = 0, isAdmin = false;
 let testPasscode = "1234", timerInterval = null, timeLeft = 0, isReviewMode = false;
@@ -8,8 +8,8 @@ async function handleAuth() {
     const input = document.getElementById('input-name').value.trim();
     if (!input) return;
     
-    // ✅ 功能 1：按鈕轉為顯示 "載入中..."
-    const authBtn = document.getElementById('auth-btn');
+    // ✅ 功能 1：按鈕轉為「載入中...」
+    const authBtn = document.querySelector('#auth-overlay .btn-main');
     const originalText = authBtn.innerText;
     authBtn.innerText = "載入中...";
     authBtn.disabled = true;
@@ -115,28 +115,14 @@ function startTimer() {
         let m = Math.floor(timeLeft / 60), s = timeLeft % 60;
         document.getElementById('timer-display').innerText = `${m}:${s < 10 ? '0' : ''}${s}`;
         
-        // ✅ 功能 5：靜音提醒 (浮動 Toast)，並將計時器變紅
+        // 計時器倒數 5 分鐘變色
         if (timeLeft === 300) { 
-            showSilentAlert("⏰ 注意：測驗時間剩餘 5 分鐘！");
-            document.getElementById('timer-display').classList.add('warning-time');
+            document.getElementById('timer-display').style.background = "#FFFFFF";
+            document.getElementById('timer-display').style.color = "#EF4444";
         }
         
         if (timeLeft <= 0) { clearInterval(timerInterval); submitTest(true); }
     }, 1000);
-}
-
-// ✅ 功能 5 專用：不發出聲音的浮動提醒畫面
-function showSilentAlert(msg) {
-    const toast = document.createElement('div');
-    toast.style = "position:fixed; top:20px; left:50%; transform:translateX(-50%); background:var(--wrong); color:white; padding:12px 24px; border-radius:30px; font-weight:bold; z-index:9999; box-shadow:0 4px 15px rgba(0,0,0,0.2); transition: 0.5s opacity; font-size:1rem;";
-    toast.innerText = msg;
-    document.body.appendChild(toast);
-    
-    // 顯示 4 秒後自動消失
-    setTimeout(() => { 
-        toast.style.opacity = '0'; 
-        setTimeout(() => toast.remove(), 500); 
-    }, 4000);
 }
 
 function renderTopNav() {
@@ -211,8 +197,7 @@ function prevQuestion() { if (currentIdx > 0) { currentIdx--; renderQuestion(); 
 
 function nextQuestion() {
     if (isReviewMode && currentIdx === testData.length - 1) { location.reload(); return; }
-    
-    // ✅ 功能 3：移除了防呆驗證，即使 userAns === null 也能順利進入下一題
+    // ✅ 功能 3：移除了防呆，不選也能按下一題
     if (currentIdx < testData.length - 1) { currentIdx++; renderQuestion(); } 
     else if (!isReviewMode) submitTest();
 }
@@ -243,9 +228,6 @@ function submitTest(isAuto = false) {
         });
         fetch(SCRIPT_URL, { method: 'POST', mode: 'no-cors', body: params });
     }
-    
-    // 如果是時間到自動提交，使用靜音通知代替 alert
-    if (isAuto) showSilentAlert("⏰ 時間到！系統已自動提交答案。");
     showPasscodeOverlay();
 }
 
@@ -256,7 +238,7 @@ function showPasscodeOverlay() {
         <div class="card" style="text-align:center;">
             <h2 style="color:var(--correct)">✅ 測驗已提交</h2>
             <p>請輸入解鎖碼查看分數與詳解</p>
-            <input type="text" id="input-passcode" class="auth-input" placeholder="解鎖碼" style="width:80%;">
+            <input type="text" id="input-passcode" class="auth-input" placeholder="解鎖碼" style="border: 2px solid #E2E8F0; width:80%;">
             <button class="btn btn-main" style="width:80%; margin:15px auto;" onclick="verifyPasscode()">🔓 驗證並查看成績</button>
             <div id="passcode-error" style="color:var(--wrong); font-weight:bold;"></div>
         </div>
@@ -270,12 +252,12 @@ function verifyPasscode() {
         testData = originalTestData; 
         currentIdx = 0;
         
-        // ✅ 功能 2：第一時間顯示分數的大字報畫面
+        // ✅ 功能 2：解鎖後第一時間顯示大字報成績
         document.getElementById('main-display').innerHTML = `
             <div class="card" style="text-align:center;">
                 <h2>📊 你的成績</h2>
                 <h1 style="font-size:3.5rem; color:var(--accent); margin: 20px 0;">${testScore}</h1>
-                <p style="color:var(--disabled); margin-bottom: 25px;">太棒了！點擊下方按鈕檢閱題目對錯</p>
+                <p style="color:var(--disabled); margin-bottom: 25px;">點擊下方按鈕檢閱題目對錯</p>
                 <button class="btn btn-main" style="width:80%; margin:0 auto;" onclick="startReview()">開始檢閱詳解</button>
             </div>
         `;
@@ -284,7 +266,7 @@ function verifyPasscode() {
     }
 }
 
-// 功能 2 附屬：點擊開始檢閱後，才載入題目介面
+// 輔助：點擊開始檢閱後載入題目介面
 function startReview() {
     document.getElementById('main-display').innerHTML = `
         <div class="card">
@@ -293,7 +275,6 @@ function startReview() {
             <div id="options-container"></div>
             <div id="warning-msg" style="color:var(--wrong); font-weight:bold; text-align:center; margin-top:10px; min-height:20px; font-size:0.9rem;"></div>
         </div>`;
-        
     document.getElementById('test-footer').classList.remove('hidden');
     document.getElementById('top-nav').classList.remove('hidden'); 
     renderQuestion();
@@ -303,30 +284,20 @@ function openModal(type) {
     const q = testData[currentIdx];
     const modal = document.createElement('div');
     modal.style = "position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:9000; display:flex; align-items:center; justify-content:center; padding:20px;";
-    
     let rawText = type === 'hint' ? (q.hint || "無提示") : (q.explain || "無詳解");
-    
-    let safeContent = String(rawText).replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    safeContent = safeContent.replace(/\\n/g, '\n'); 
-    
+    let safeContent = String(rawText).replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\\n/g, '\n'); 
     let parts = safeContent.split('$');
     for (let i = 0; i < parts.length; i++) {
-        if (i % 2 === 1) { 
-            parts[i] = parts[i].replace(/\n/g, '$<br>$');
-        } else {
-            parts[i] = parts[i].replace(/\n/g, '<br>');
-        }
+        if (i % 2 === 1) parts[i] = parts[i].replace(/\n/g, '$<br>$');
+        else parts[i] = parts[i].replace(/\n/g, '<br>');
     }
-    safeContent = parts.join('$');
-
     modal.innerHTML = `
         <div style="background:white; width:100%; max-width:500px; border-radius:20px; padding:25px; max-height:80vh; overflow-y:auto;">
             <h3 style="margin-top:0;">${type==='hint'?'💡 提示':'📖 詳解'}</h3>
-            <div style="margin:20px 0; line-height:1.6; word-wrap: break-word; font-size: 1.05rem;">${safeContent}</div>
+            <div style="margin:20px 0; line-height:1.6; word-wrap: break-word; font-size: 1.05rem;">${parts.join('$')}</div>
             <button class="btn btn-sub" style="width:100%" onclick="this.parentElement.parentElement.remove()">關閉</button>
         </div>
     `;
     document.body.appendChild(modal);
-    
     if (window.MathJax) MathJax.typesetPromise([modal]);
 }
