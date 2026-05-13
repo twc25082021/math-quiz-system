@@ -237,13 +237,18 @@ function openModal(type) {
     const q = testData[currentIdx];
     const modal = document.createElement('div');
     modal.style = "position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:9000; display:flex; align-items:center; justify-content:center; padding:20px;";
+    
+    let rawText = type === 'hint' ? (q.hint || "") : (q.explain || "");
+    let safeContent = String(rawText).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
     modal.innerHTML = `
         <div style="background:white; width:100%; max-width:500px; border-radius:20px; padding:25px; max-height:80vh; overflow-y:auto;">
-            <h3>${type==='hint'?'💡 提示':'📖 詳解'}</h3>
-            <div style="margin:20px 0; line-height:1.6;">${String(type==='hint'?q.hint:q.explain).replace(/\n/g,'<br>')}</div>
+            <h3 style="margin-top:0;">${type==='hint'?'💡 提示':'📖 詳解'}</h3>
+            <div style="margin:20px 0; line-height:1.6; white-space: pre-wrap; word-wrap: break-word; font-size: 1.05rem;">${safeContent}</div>
             <button class="btn btn-sub" style="width:100%" onclick="this.parentElement.parentElement.remove()">關閉</button>
         </div>
     `;
     document.body.appendChild(modal);
+    
     if (window.MathJax) MathJax.typesetPromise([modal]);
 }
