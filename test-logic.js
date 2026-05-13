@@ -1,4 +1,4 @@
-/* test-logic.js (更新：補回 Apps Script 完整數據傳輸、修復 DOM 重置結構) */
+/* test-logic.js (全功能更新版) */
 
 let studentInfo = {}, testData = [], originalTestData = [], testName = "", currentIdx = 0, isAdmin = false;
 let testPasscode = "1234", timerInterval = null, timeLeft = 0, isReviewMode = false;
@@ -8,7 +8,12 @@ async function handleAuth() {
     const input = document.getElementById('input-name').value.trim();
     if (!input) return;
     
-    // 管理員登入邏輯
+    // ✅ 功能 1：按鈕轉為顯示 "載入中..."
+    const authBtn = document.getElementById('auth-btn');
+    const originalText = authBtn.innerText;
+    authBtn.innerText = "載入中...";
+    authBtn.disabled = true;
+    
     if (input === ADMIN_KEY) {
         isAdmin = true;
         studentInfo = { name: "老師 (管理員)", className: "STAFF", classNo: "00" };
@@ -24,9 +29,13 @@ async function handleAuth() {
             showCodeOverlay(); 
         } else { 
             document.getElementById('auth-error').innerText = "⚠️ 找不到該學生編號"; 
+            authBtn.innerText = originalText;
+            authBtn.disabled = false;
         }
     } catch (e) { 
         document.getElementById('auth-error').innerText = "連線失敗"; 
+        authBtn.innerText = originalText;
+        authBtn.disabled = false;
     }
 }
 
@@ -51,10 +60,8 @@ async function fetchTest() {
             testPasscode = res.passcode || "1234";
             testName = res.testName;
             
-            // 處理題目數據
             let processed = res.data.map((q, qIndex) => {
                 let opts = q.options.map((text, oIdx) => ({ text: text, originalIdx: oIdx }));
-                // 學生才打亂選項，管理員對卷不打亂
                 if (!isAdmin) {
                     for (let i = opts.length - 1; i > 0; i--) {
                         const j = Math.floor(Math.random() * (i + 1));
@@ -66,22 +73,19 @@ async function fetchTest() {
 
             originalTestData = [...processed].sort((a, b) => a.originalIndex - b.originalIndex);
             
-            // 介面初始化
             document.getElementById('test-name-tag').innerText = testName;
             document.getElementById('code-overlay').classList.add('hidden');
             document.getElementById('test-footer').classList.remove('hidden');
             document.getElementById('top-nav').classList.remove('hidden');
 
-            // --- 核心改動：管理員直跳檢閱模式 ---
             if (isAdmin) {
                 isReviewMode = true;
-                testData = [...originalTestData]; // 管理員使用原始順序
+                testData = [...originalTestData]; 
                 testScore = "管理員模式";
                 renderQuestion();
                 return; 
             }
 
-            // 學生模式：打亂題目順序並開始計時
             testData = [...processed];
             for (let i = testData.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
@@ -110,9 +114,29 @@ function startTimer() {
         timeLeft--;
         let m = Math.floor(timeLeft / 60), s = timeLeft % 60;
         document.getElementById('timer-display').innerText = `${m}:${s < 10 ? '0' : ''}${s}`;
-        if (timeLeft === 300) alert("⏰ 注意：測驗時間剩餘 5 分鐘！");
+        
+        // ✅ 功能 5：靜音提醒 (浮動 Toast)，並將計時器變紅
+        if (timeLeft === 300) { 
+            showSilentAlert("⏰ 注意：測驗時間剩餘 5 分鐘！");
+            document.getElementById('timer-display').classList.add('warning-time');
+        }
+        
         if (timeLeft <= 0) { clearInterval(timerInterval); submitTest(true); }
     }, 1000);
+}
+
+// ✅ 功能 5 專用：不發出聲音的浮動提醒畫面
+function showSilentAlert(msg) {
+    const toast = document.createElement('div');
+    toast.style = "position:fixed; top:20px; left:50%; transform:translateX(-50%); background:var(--wrong); color:white; padding:12px 24px; border-radius:30px; font-weight:bold; z-index:9999; box-shadow:0 4px 15px rgba(0,0,0,0.2); transition: 0.5s opacity; font-size:1rem;";
+    toast.innerText = msg;
+    document.body.appendChild(toast);
+    
+    // 顯示 4 秒後自動消失
+    setTimeout(() => { 
+        toast.style.opacity = '0'; 
+        setTimeout(() => toast.remove(), 500); 
+    }, 4000);
 }
 
 function renderTopNav() {
@@ -123,7 +147,7 @@ function renderTopNav() {
         let cls = "q-btn";
         if (i === currentIdx) cls += " current";
         else if (isReviewMode) {
-            if (isAdmin) cls += " answered"; // 管理員模式下全部顯示為已讀
+            if (isAdmin) cls += " answered"; 
             else cls += (q.userAns === q.ans) ? " res-ok" : " res-no";
         }
         else if (q.userAns !== null) cls += " answered";
@@ -140,7 +164,6 @@ function renderQuestion() {
     const q = testData[currentIdx];
     document.getElementById('progress-tag').innerText = `${currentIdx + 1} / ${testData.length}`;
     
-    // 頂部資訊
     let metaText = isReviewMode ? `<span style="color:var(--accent); font-weight:bold; margin-right:15px;">${testScore}</span>題號: ${q.id}` : "測驗進行中";
     document.getElementById('q-meta').innerHTML = metaText;
     
@@ -185,8 +208,11 @@ function renderQuestion() {
 }
 
 function prevQuestion() { if (currentIdx > 0) { currentIdx--; renderQuestion(); } }
+
 function nextQuestion() {
     if (isReviewMode && currentIdx === testData.length - 1) { location.reload(); return; }
+    
+    // ✅ 功能 3：移除了防呆驗證，即使 userAns === null 也能順利進入下一題
     if (currentIdx < testData.length - 1) { currentIdx++; renderQuestion(); } 
     else if (!isReviewMode) submitTest();
 }
@@ -194,7 +220,6 @@ function nextQuestion() {
 function submitTest(isAuto = false) {
     clearInterval(timerInterval);
     
-    // 【修復 1】計算原始分數與收集每題明細，對齊原本後台的接收格式
     let details = [], correct = 0;
     const sorted = [...testData].sort((a, b) => a.originalIndex - b.originalIndex);
     sorted.forEach(q => {
@@ -213,12 +238,14 @@ function submitTest(isAuto = false) {
             classNo: studentInfo.classNo, 
             testName: testName, 
             score: testScore,
-            rawScore: correct,                   // 新增：純數字得分
-            details: JSON.stringify(details)     // 新增：JSON 明細
+            rawScore: correct,
+            details: JSON.stringify(details)
         });
         fetch(SCRIPT_URL, { method: 'POST', mode: 'no-cors', body: params });
     }
-    if (isAuto) alert("⏰ 時間到！系統已自動提交。");
+    
+    // 如果是時間到自動提交，使用靜音通知代替 alert
+    if (isAuto) showSilentAlert("⏰ 時間到！系統已自動提交答案。");
     showPasscodeOverlay();
 }
 
@@ -230,7 +257,7 @@ function showPasscodeOverlay() {
             <h2 style="color:var(--correct)">✅ 測驗已提交</h2>
             <p>請輸入解鎖碼查看分數與詳解</p>
             <input type="text" id="input-passcode" class="auth-input" placeholder="解鎖碼" style="width:80%;">
-            <button class="btn btn-main" style="width:80%; margin:15px auto;" onclick="verifyPasscode()">🔓 解鎖並檢閱</button>
+            <button class="btn btn-main" style="width:80%; margin:15px auto;" onclick="verifyPasscode()">🔓 驗證並查看成績</button>
             <div id="passcode-error" style="color:var(--wrong); font-weight:bold;"></div>
         </div>
     `;
@@ -243,21 +270,33 @@ function verifyPasscode() {
         testData = originalTestData; 
         currentIdx = 0;
         
-        // 【修復 2】補回 warning-msg 以防萬一，保持 DOM 結構統一
+        // ✅ 功能 2：第一時間顯示分數的大字報畫面
         document.getElementById('main-display').innerHTML = `
-            <div class="card">
-                <div id="q-meta"></div>
-                <div id="q-text"></div>
-                <div id="options-container"></div>
-                <div id="warning-msg" style="color:var(--wrong); font-weight:bold; text-align:center; margin-top:10px; min-height:20px; font-size:0.9rem;"></div>
-            </div>`;
-            
-        document.getElementById('test-footer').classList.remove('hidden');
-        document.getElementById('top-nav').classList.remove('hidden'); 
-        renderQuestion();
+            <div class="card" style="text-align:center;">
+                <h2>📊 你的成績</h2>
+                <h1 style="font-size:3.5rem; color:var(--accent); margin: 20px 0;">${testScore}</h1>
+                <p style="color:var(--disabled); margin-bottom: 25px;">太棒了！點擊下方按鈕檢閱題目對錯</p>
+                <button class="btn btn-main" style="width:80%; margin:0 auto;" onclick="startReview()">開始檢閱詳解</button>
+            </div>
+        `;
     } else { 
         document.getElementById('passcode-error').innerText = "❌ 解鎖碼錯誤"; 
     }
+}
+
+// 功能 2 附屬：點擊開始檢閱後，才載入題目介面
+function startReview() {
+    document.getElementById('main-display').innerHTML = `
+        <div class="card">
+            <div id="q-meta"></div>
+            <div id="q-text"></div>
+            <div id="options-container"></div>
+            <div id="warning-msg" style="color:var(--wrong); font-weight:bold; text-align:center; margin-top:10px; min-height:20px; font-size:0.9rem;"></div>
+        </div>`;
+        
+    document.getElementById('test-footer').classList.remove('hidden');
+    document.getElementById('top-nav').classList.remove('hidden'); 
+    renderQuestion();
 }
 
 function openModal(type) {
