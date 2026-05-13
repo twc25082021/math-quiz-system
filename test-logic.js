@@ -1,7 +1,8 @@
-/* test-logic.js (課堂測驗專屬：支援計時、全卷提交、rawScore回傳與分數放大) */
+/* test-logic.js (更新：解鎖後顯示分數、明碼輸入、允許空選跳題、5分鐘提示) */
 
 let studentInfo = {}, testData = [], originalTestData = [], testName = "", currentIdx = 0, isAdmin = false;
 let testPasscode = "1234", timerInterval = null, timeLeft = 0, isReviewMode = false;
+let testScore = ""; // 儲存最終分數
 
 async function handleAuth() {
     const input = document.getElementById('input-name').value.trim();
@@ -85,6 +86,12 @@ function startTimer() {
         timeLeft--;
         let m = Math.floor(timeLeft / 60), s = timeLeft % 60;
         document.getElementById('timer-display').innerText = `${m}:${s < 10 ? '0' : ''}${s}`;
+        
+        // 剩餘 5 分鐘提示
+        if (timeLeft === 300) {
+            alert("⏰ 注意：測驗時間剩餘 5 分鐘！");
+        }
+        
         if (timeLeft <= 0) { clearInterval(timerInterval); submitTest(true); }
     }, 1000);
 }
@@ -95,22 +102,15 @@ function renderTopNav() {
     testData.forEach((q, i) => {
         const btn = document.createElement('div');
         let cls = "q-btn";
-        
         if (i === currentIdx) cls += " current";
-        else if (isReviewMode) {
-            cls += (q.userAns === q.ans) ? " res-ok" : " res-no";
-        } else if (q.userAns !== null) cls += " answered";
+        else if (isReviewMode) cls += (q.userAns === q.ans) ? " res-ok" : " res-no";
+        else if (q.userAns !== null) cls += " answered";
         
         btn.className = cls;
         btn.innerText = i + 1;
         btn.onclick = () => { currentIdx = i; renderQuestion(); };
         nav.appendChild(btn);
-        
-        if (i === currentIdx) {
-            setTimeout(() => {
-                btn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
-            }, 50);
-        }
+        if (i === currentIdx) setTimeout(() => btn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' }), 50);
     });
 }
 
@@ -120,11 +120,11 @@ function renderQuestion() {
     document.getElementById('warning-msg').innerText = ""; 
     document.getElementById('progress-tag').innerText = `${currentIdx + 1} / ${testData.length}`;
     
-    let metaText = isReviewMode ? `題號: ${q.id} (檢閱中)` : "測驗進行中";
+    // 如果是檢閱模式，顯示最終得分
+    let metaText = isReviewMode ? `<span style="color:var(--accent); font-weight:bold; font-size:1.1rem; margin-right:15px;">得分: ${testScore}</span>題號: ${q.id} (檢閱中)` : "測驗進行中";
     if (isReviewMode && q.userAns === null) metaText += ` <span style="color:var(--wrong); margin-left:10px;">[ 未作答 ]</span>`;
     document.getElementById('q-meta').innerHTML = metaText;
     
-    // 【處理題目換行與 \displaystyle】
     let displayQ = String(q.text).replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
     if (displayQ.includes('\\frac')) displayQ = displayQ.replace(/\\frac/g, '\\displaystyle \\frac');
     document.getElementById('q-text').innerHTML = displayQ;
@@ -141,18 +141,11 @@ function renderQuestion() {
         } else if (q.userAns === opt.originalIdx) status = "selected";
         
         div.className = `option ${status}`;
-        
-        // 【處理選項換行與 \displaystyle】
         let displayOpt = String(opt.text).replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
         let hasFraction = false;
-        if (displayOpt.includes('\\frac')) {
-            displayOpt = displayOpt.replace(/\\frac/g, '\\displaystyle \\frac');
-            hasFraction = true;
-        }
+        if (displayOpt.includes('\\frac')) { displayOpt = displayOpt.replace(/\\frac/g, '\\displaystyle \\frac'); hasFraction = true; }
 
         div.innerHTML = `<span style="color:var(--disabled); margin-right:15px; font-style:italic;">${['A','B','C','D'][i]}.</span> <span style="font-family:'Times New Roman', serif; font-weight:bold; font-style:italic; line-height: 1.5;">${displayOpt}</span>`;
-        
-        // 【套用分數加大樣式】
         if (hasFraction) div.classList.add('has-fraction');
 
         if (!isReviewMode) div.onclick = () => { q.userAns = opt.originalIdx; renderQuestion(); };
@@ -160,27 +153,22 @@ function renderQuestion() {
     });
 
     const nextBtn = document.getElementById('next-btn');
-    if (currentIdx === testData.length - 1) {
-        nextBtn.innerHTML = isReviewMode ? '結束檢閱' : '📤 提交測驗';
-    } else {
-        nextBtn.innerHTML = '下一題 <i class="fa-solid fa-chevron-right"></i>';
-    }
+    if (currentIdx === testData.length - 1) nextBtn.innerHTML = isReviewMode ? '結束檢閱' : '📤 提交測驗';
+    else nextBtn.innerHTML = '下一題 <i class="fa-solid fa-chevron-right"></i>';
 
     if (isReviewMode) {
         document.getElementById('explain-btn').classList.remove('hidden');
         document.getElementById('hint-btn').classList.remove('hidden');
     }
-
     renderTopNav();
     if (window.MathJax) MathJax.typesetPromise();
 }
 
 function prevQuestion() { if (currentIdx > 0) { currentIdx--; renderQuestion(); } }
+
 function nextQuestion() {
     if (isReviewMode && currentIdx === testData.length - 1) { location.reload(); return; }
-    if (!isReviewMode && testData[currentIdx].userAns === null && !isAdmin) {
-        document.getElementById('warning-msg').innerText = "⚠️ 請先選擇答案！"; return;
-    }
+    // 移除阻擋未作答的邏輯，允許直接按下一題
     if (currentIdx < testData.length - 1) { currentIdx++; renderQuestion(); } 
     else if (!isReviewMode) submitTest();
 }
@@ -198,36 +186,34 @@ function submitTest(isAuto = false) {
         details.push(`${q.id} (${ok ? "✓" : "✗"})`);
     });
 
-    const score = `${correct} / ${testData.length}`;
+    testScore = `${correct} / ${testData.length}`; // 儲存分數供檢閱時使用
+
     if (!isAdmin) {
         const params = new URLSearchParams({
-            action: "submitTest", 
-            name: studentInfo.name, 
-            className: studentInfo.className,
-            classNo: studentInfo.classNo, 
-            testName: testName, 
-            score: score, 
-            rawScore: correct, // 【確保上傳純分子】
-            details: JSON.stringify(details)
+            action: "submitTest", name: studentInfo.name, className: studentInfo.className,
+            classNo: studentInfo.classNo, testName: testName, score: testScore, rawScore: correct, details: JSON.stringify(details)
         });
         fetch(SCRIPT_URL, { method: 'POST', mode: 'no-cors', body: params });
     }
     if (isAuto) alert("⏰ 時間到！系統已自動提交答案。");
-    showPasscodeOverlay(score);
+    showPasscodeOverlay(); // 提交後不直接顯示分數，只顯示解鎖畫面
 }
 
-function showPasscodeOverlay(score) {
+// --- 提交後畫面：不顯示分數，輸入框改為 type="text" (明碼) ---
+function showPasscodeOverlay() {
     document.getElementById('test-footer').classList.add('hidden');
     document.getElementById('timer-display').classList.add('hidden');
     document.getElementById('top-nav').classList.add('hidden'); 
     
     document.getElementById('main-display').innerHTML = `
         <div class="card" style="text-align:center;">
-            <h2 style="color:var(--correct)">✅ 測驗完成</h2>
-            <p>請輸入解鎖碼查看檢閱結果</p>
-            <input type="password" id="input-passcode" class="auth-input" placeholder="解鎖碼" style="border:2px solid #E2E8F0; width: 80%;">
-            <button class="btn btn-main" style="width:80%; margin:15px auto;" onclick="verifyPasscode()">🔓 解鎖並檢閱</button>
-            <div id="passcode-error" style="color:var(--wrong); font-weight:bold;"></div>
+            <h2 style="color:var(--correct)">✅ 測驗已提交</h2>
+            <div style="margin: 25px 0; padding: 20px; background: #F8FAFC; border-radius: 16px;">
+                 <p>請輸入老師提供的解鎖碼查看分數與詳細檢閱</p>
+                 <input type="text" id="input-passcode" class="auth-input" placeholder="請輸入解鎖碼" style="border:2px solid #E2E8F0; width: 80%;">
+                 <button class="btn btn-main" style="width:80%; margin:15px auto;" onclick="verifyPasscode()">🔓 解鎖並檢閱</button>
+                 <div id="passcode-error" style="color:var(--wrong); font-weight:bold;"></div>
+            </div>
         </div>
     `;
 }
@@ -235,9 +221,7 @@ function showPasscodeOverlay(score) {
 function verifyPasscode() {
     const code = document.getElementById('input-passcode').value.trim();
     if (code === testPasscode || code === ADMIN_KEY) { 
-        isReviewMode = true;
-        testData = originalTestData; 
-        currentIdx = 0;
+        isReviewMode = true; testData = originalTestData; currentIdx = 0;
         document.getElementById('next-btn').disabled = false;
         document.getElementById('main-display').innerHTML = `
             <div class="card">
@@ -250,9 +234,7 @@ function verifyPasscode() {
         document.getElementById('test-footer').classList.remove('hidden');
         document.getElementById('top-nav').classList.remove('hidden'); 
         renderQuestion();
-    } else {
-        document.getElementById('passcode-error').innerText = "❌ 解鎖碼錯誤";
-    }
+    } else { document.getElementById('passcode-error').innerText = "❌ 解鎖碼錯誤"; }
 }
 
 function openModal(type) {
