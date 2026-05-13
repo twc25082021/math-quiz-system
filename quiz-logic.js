@@ -209,22 +209,38 @@ function openModal(type) {
     const q = filteredData[currentIdx];
     document.getElementById('modal-title').innerText = type === 'hint' ? "💡 提示 (Hint)" : "📖 答案詳解 (Explanation)";
     
-    let rawText = type === 'hint' ? (q.hint || "") : (q.explain || "");
-    rawText = String(rawText).replace(/<span[^>]*>/gi, '').replace(/<\/span>/gi, '');
+    // 1. 取得原始文字
+    let rawText = type === 'hint' ? (q.hint || "無提示") : (q.explain || "無詳解");
     
-    // 【核心修正：移除 \n 的 <br> 替換，改用 CSS pre-wrap 實現原生換行】
-    let safeContent = rawText.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    // 2. 清除可能殘留的 HTML，並將字串的 \n 轉為真實換行符號
+    let safeContent = String(rawText).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    safeContent = safeContent.replace(/\\n/g, '\n'); 
     
+    // 3. 【核心修復：聰明換行器，絕對保護 MathJax 的 $ 符號】
+    let parts = safeContent.split('$');
+    for (let i = 0; i < parts.length; i++) {
+        if (i % 2 === 1) { 
+            // 這是 $ ... $ 裡面的數學公式
+            // 遇到換行時：關閉公式 -> 換行 -> 重新開啟公式
+            parts[i] = parts[i].replace(/\n/g, '$<br>$');
+        } else {
+            // 這是普通的文字，直接換行
+            parts[i] = parts[i].replace(/\n/g, '<br>');
+        }
+    }
+    // 把處理好的段落重新用 $ 拼回去
+    safeContent = parts.join('$');
+    
+    // 4. 渲染到畫面上
     let finalHTML = type === 'hint' 
-        ? `<div class="quiz-hint" style="white-space: pre-wrap; text-align: left; line-height: 1.6;">${safeContent}</div>` 
-        : `<div style="white-space: pre-wrap; text-align: left; line-height: 1.6;">${safeContent}</div>`;
+        ? `<div class="quiz-hint" style="text-align: left; line-height: 1.6;">${safeContent}</div>` 
+        : `<div style="text-align: left; line-height: 1.6;">${safeContent}</div>`;
         
     document.getElementById('modal-body').innerHTML = finalHTML;
     document.getElementById('modal').classList.add('active');
     
     if (window.MathJax) MathJax.typesetPromise([document.getElementById('modal-body')]);
 }
-
 function closeModal() { 
     document.getElementById('modal').classList.remove('active'); 
 }
