@@ -1,4 +1,4 @@
-/* quiz-logic.js (加入換行支援與班別學號) */
+/* quiz-logic.js (加入換行支援、班別學號與數學分數放大支援) */
 
 let quizData = [];         
 let filteredData = [];     
@@ -135,8 +135,11 @@ function render() {
     const q = filteredData[currentIdx];
     document.getElementById('q-meta').innerText = q.id;
     
-    // 【加入換行支援】
+    // 【加入換行支援與強制 \displaystyle 轉換】
     let safeQuestionText = String(q.text).replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+    if (safeQuestionText.includes('\\frac')) {
+         safeQuestionText = safeQuestionText.replace(/\\frac/g, '\\displaystyle \\frac');
+    }
     document.getElementById('q-text').innerHTML = safeQuestionText;
     
     document.getElementById('progress-tag').innerText = `${currentIdx + 1} / ${filteredData.length}`;
@@ -148,7 +151,7 @@ function render() {
     
     q.options.forEach((opt, i) => {
         const div = document.createElement('div');
-        // 【加入換行支援】
+        // 【加入換行支援與強制 \displaystyle 轉換】
         let displayOpt = String(opt).replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
         
         if (displayOpt.includes('\\frac')) {
